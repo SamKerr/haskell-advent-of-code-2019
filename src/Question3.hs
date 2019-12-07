@@ -33,50 +33,84 @@ applyVec v (x,y) = case v of
     Down d -> (x,y-d)
     Left d -> (x-d,y)
 
--- begin solving part 1
+-- solve part a
 solve1 :: [[Vec]] -> Maybe Int
 solve1 (v1:v2:vs) = do 
-    let points1 = getPoints v1 
-        points2 = getPoints v2
-        overlappingPoints = getAllOverlaps points1 points2
+    let lines1 = getLines v1 
+        lines2 = getLines v2
+        overlappingPoints = getAllOverlaps lines1 lines2
     if overlappingPoints == [] then Nothing
     else Just $ (minimum . map hamiltonianDist) overlappingPoints
 solve1 _ = Nothing
 
--- Generates every single point of the wires
-getPoints :: [Vec] -> [Coord]
-getPoints vecs = points (0,0) vecs [] 
-    where 
-        points :: Coord -> [Vec] -> [Coord] -> [Coord]
-        points p [] ps = ps 
-        points p (v:vs) ps 
-            | mag v == 0 = ps ++ (points p vs [])
-            | otherwise = points (oneStepFromP p v) (reduced v:vs) (oneStepFromP p v : ps)
-            
-        mag :: Vec -> Int 
-        mag v = case v of 
-            Up a -> a
-            Right a -> a
-            Down a -> a
-            Left a -> a
+-- TODO this is wrong, dont use init but just discount 0,0 position
+getLines :: [Vec] -> [Line]
+getLines vecs = init $ helper (0,0) vecs [] 
+    where helper :: Coord -> [Vec] -> [Line] -> [Line] 
+          helper p [] ls = ls
+          helper p (v:vs) ls = helper newP vs ((p, newP) : ls)
+            where newP = applyVec v p 
 
-        reduced :: Vec -> Vec 
-        reduced v = case v of
-            Up a -> Up (a-1)
-            Right a -> Right (a-1)
-            Down a -> Down (a-1)
-            Left a -> Left (a-1)
-
-        oneStepFromP :: Coord -> Vec -> Coord
-        oneStepFromP (x,y) v = case v of 
-            Up a -> (x,y+1)
-            Right a -> (x+1,y)
-            Down a -> (x,y-1)
-            Left a -> (x-1,y)
+getAllOverlaps :: [Line] -> [Line] -> [Coord]
+getAllOverlaps xs ys = do 
+    [getClosestIntersection x y| x <- xs , y <- ys , x `intersects` y]
     
 hamiltonianDist :: Coord -> Int 
 hamiltonianDist (x,y) = (abs x) + (abs y) 
 
--- cartesian product... not great ...
-getAllOverlaps :: [Coord] -> [Coord] -> [Coord]
-getAllOverlaps xs ys = [x | x <- xs , y <- ys , x == y]
+getClosestIntersection :: Line -> Line -> Coord
+getClosestIntersection line1@((x1,y1),(x2,y2)) line2@((x3,y3),(x4,y4)) 
+    | inCross line1 line2 = (getRepeated [x1,x2,x3,x4], getRepeated [y1,y2,y3,y4])
+    | otherwise =  if horizontal line1 then (getRepeated [x1,x2,x3,x4], y1)
+                   else (x1, getRepeated [y1,y2,y3,y4])
+    where getRepeated xs = helper xs []
+          helper (x:xs) seen = 
+            if x `elem` seen then x 
+            else helper xs (x:seen)
+          
+            -- either a cross or co-linear intersection formation
+          inCross ((x1,y1),(x2,y2)) ((x3,y3),(x4,y4)) = not $ (all (==x1) [x1,x2,x3,x4]) || (all (==y1) [y1,y2,y3,y4])
+
+intersects :: Line -> Line -> Bool 
+intersects (x1,y1) (x2,y2) = line1Interects && line2Intersects
+    where line1Interects = validIntersection (sideOn x1 (x2,y2)) (sideOn y1 (x2,y2))   
+          line2Intersects = validIntersection (sideOn x2 (x1,y1)) (sideOn y2 (x1,y1))   
+
+-- Logic and Data types for determining intersections
+data Placement = LeftOrBelowLine | RightOrAboveLine | OnLine
+
+validIntersection :: Placement -> Placement -> Bool
+validIntersection LeftOrBelowLine LeftOrBelowLine = False
+validIntersection RightOrAboveLine RightOrAboveLine = False
+validIntersection _ _ = True
+
+sideOn :: Coord -> Line -> Placement 
+sideOn p (x,y) = if horizontal (x,y) then above (x,y) p 
+                 else right (x,y) p 
+
+horizontal ((_,y1), (_,y2)) = y1==y2
+above ((_,y1), _) (_,y2) 
+            | y2 > y1 = RightOrAboveLine
+            | y2 == y1 = OnLine
+            | y2 < y1 = LeftOrBelowLine
+
+right ((x1,_),_) (x2,_) 
+            | x2 > x1 = RightOrAboveLine
+            | x2 == x1 = OnLine 
+            | x2 < x1 = LeftOrBelowLine
+
+-- solve part b
+-- solve2 :: [[Vec]] -> Maybe Int
+-- solve1 (v1:v2:vs) = do 
+--     let points1 = getLines v1 
+--         points2 = getLines v2
+--         overlappingPoints = getAllOverlaps points1 points2
+--     if overlappingPoints == [] then Nothing
+--     else Just $ (minimum . map hamiltonianDist) overlappingPoints
+-- solve1 _ = Nothing
+
+-- type LineWithStep = (Line, Int)
+
+-- use LineWithStep instead of line
+-- As we generate lines we need to accumulate steps 
+-- add logic to deduce the step at a given coord
